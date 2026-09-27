@@ -15,7 +15,8 @@ driver.get("http://localhost:5173/login")
 time.sleep(2)
 driver.find_element(By.XPATH, "//input[@type='email']").send_keys("admin@infrasync.gov.bd")
 driver.find_element(By.XPATH, "//input[@type='password']").send_keys("admin123")
-driver.find_element(By.XPATH, "//button[@type='submit']").click()
+login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+driver.execute_script("arguments[0].click();", login_btn)
 time.sleep(3)
 
 # Navigate to Complaints Page

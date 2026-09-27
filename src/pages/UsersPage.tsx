@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import type { AccountStatus } from '../types';
 import { roleLabel } from '../utils';
 
+// fixed userpage fillter
 function UsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');

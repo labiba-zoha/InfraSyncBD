@@ -22,7 +22,8 @@ driver.find_element(By.XPATH, "//input[@type='email']").send_keys("salman@rhd.go
 driver.find_element(By.XPATH, "//input[@type='password']").send_keys("admin123")
 
 # Click Login Button
-driver.find_element(By.XPATH, "//button[@type='submit']").click()
+login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+driver.execute_script("arguments[0].click();", login_btn)
 
 time.sleep(3) # Wait for login process
 

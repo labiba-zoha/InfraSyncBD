@@ -13,6 +13,8 @@ function ComplaintsPage() {
   const [submittingEvidenceComplaint, setSubmittingEvidenceComplaint] = useState<any | null>(null);
   const [viewingEvidenceComplaint, setViewingEvidenceComplaint] = useState<any | null>(null);
   const [selectedContractor, setSelectedContractor] = useState('');
+  const [evidenceText, setEvidenceText] = useState('');
+  const [evidencePhoto, setEvidencePhoto] = useState<File | null>(null);
   const { currentUser, showToast, addNotification, contractors } = useApp();
 
   useEffect(() => {
@@ -37,7 +39,10 @@ function ComplaintsPage() {
           department: 'Public Works',
           assignedTo: c.assigned_contractor_name || (c.assigned_contractor_id ? 'Contractor' : 'Unassigned'),
           priority: 'Medium',
-          submittedDate: new Date(c.created_at).toLocaleDateString()
+          submittedDate: new Date(c.created_at).toLocaleDateString(),
+          createdAtTime: new Date(c.created_at).getTime(),
+          remarks: c.resolution_summary || 'No remarks provided.',
+          photoUrl: c.resolution_photo_url || c.evidence_photo_url
         })));
       }
     } catch (e) {
@@ -59,7 +64,7 @@ function ComplaintsPage() {
 
     return roleFiltered.filter(
       (complaint) => statusFilter === 'All' || complaint.status === statusFilter,
-    );
+    ).sort((a, b) => b.createdAtTime - a.createdAtTime);
   }, [apiComplaints, currentUser, statusFilter]);
 
   const isAdmin = currentUser.role === 'super_admin';
@@ -67,11 +72,22 @@ function ComplaintsPage() {
   const isContractor = currentUser.role === 'contractor';
   const isCitizen = currentUser.role === 'citizen';
 
-  async function setStatus(complaint: any, status: string, assignedContractorName?: string) {
+  async function setStatus(complaint: any, status: string, assignedContractorName?: string, resolutionSummary?: string, photoFile?: File | null) {
     try {
-       const res = await api.put(`/complaints/${complaint.id}/status`, { status, assignedContractorName });
+       let res;
+       if (photoFile) {
+         const formData = new FormData();
+         formData.append('status', status);
+         if (assignedContractorName) formData.append('assignedContractorName', assignedContractorName);
+         if (resolutionSummary) formData.append('resolutionSummary', resolutionSummary);
+         formData.append('photo', photoFile);
+         res = await api.put(`/complaints/${complaint.id}/status`, formData);
+       } else {
+         res = await api.put(`/complaints/${complaint.id}/status`, { status, assignedContractorName, resolutionSummary });
+       }
+       
        if (res.data.success) {
-         setApiComplaints((current) => current.map(c => c.id === complaint.id ? { ...c, status, assignedTo: assignedContractorName || c.assignedTo } : c));
+         setApiComplaints((current) => current.map(c => c.id === complaint.id ? { ...c, status, assignedTo: assignedContractorName || c.assignedTo, remarks: resolutionSummary || c.remarks } : c));
          showToast(`Status updated to ${status}`);
        }
     } catch(e) {
@@ -184,7 +200,7 @@ function ComplaintsPage() {
               <div className="card-actions">
                 {isOfficer && (
                   <>
-                    {(complaint.status === 'Submitted' || complaint.assignedTo === 'Unassigned') && complaint.status !== 'Resolved' && complaint.status !== 'Closed' && (
+                    {complaint.assignedTo === 'Unassigned' && complaint.status !== 'Resolved' && complaint.status !== 'Closed' && (
                       <button
                         className="button button-primary"
                         type="button"
@@ -194,7 +210,7 @@ function ComplaintsPage() {
                       </button>
                     )}
                     
-                    {(complaint.status === 'Under Review' || complaint.status === 'Resolved') && (
+                    {(complaint.status === 'Under Review' || complaint.status === 'Resolved' || (complaint.status === 'Submitted' && complaint.assignedTo !== 'Unassigned')) && (
                       <button
                         className="button button-outline"
                         type="button"
@@ -204,14 +220,23 @@ function ComplaintsPage() {
                       </button>
                     )}
 
-                    {complaint.status === 'Under Review' && (
-                      <button
-                        className="button button-secondary"
-                        type="button"
-                        onClick={() => setStatus(complaint, 'Resolved')}
-                      >
-                        Verify & resolve
-                      </button>
+                    {(complaint.status === 'Under Review' || (complaint.status === 'Submitted' && complaint.assignedTo !== 'Unassigned')) && (
+                      <>
+                        <button
+                          className="button button-primary"
+                          type="button"
+                          onClick={() => setStatus(complaint, 'Resolved')}
+                        >
+                          Pass
+                        </button>
+                        <button
+                          className="button button-secondary"
+                          type="button"
+                          onClick={() => setStatus(complaint, 'In Progress')}
+                        >
+                          Request Rework
+                        </button>
+                      </>
                     )}
                   </>
                 )}
@@ -307,11 +332,11 @@ function ComplaintsPage() {
             <div className="form-grid" style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
               <label className="form-field full-field">
                 <span>Upload Photo Proof</span>
-                <input type="file" accept="image/*" />
+                <input type="file" accept="image/*" onChange={e => setEvidencePhoto(e.target.files?.[0] || null)} />
               </label>
               <label className="form-field full-field">
                 <span>Remarks</span>
-                <textarea rows={3} placeholder="Describe the correction made..." />
+                <textarea rows={3} placeholder="Describe the correction made..." value={evidenceText} onChange={e => setEvidenceText(e.target.value)} />
               </label>
             </div>
             
@@ -319,9 +344,11 @@ function ComplaintsPage() {
               className="button button-primary" 
               style={{ width: '100%' }} 
               onClick={() => {
-                setStatus(submittingEvidenceComplaint, 'Under Review');
+                setStatus(submittingEvidenceComplaint, 'Under Review', undefined, evidenceText, evidencePhoto);
                 showToast('Correction evidence submitted for officer review.');
                 setSubmittingEvidenceComplaint(null);
+                setEvidenceText('');
+                setEvidencePhoto(null);
               }}
             >
               Submit Evidence
@@ -339,22 +366,68 @@ function ComplaintsPage() {
             <h2>Submitted Correction Evidence</h2>
             
             <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
-              <div style={{ width: '100%', height: '200px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', marginBottom: '1rem' }}>
-                <span style={{ color: '#64748b' }}>[ Photo Evidence Placeholder ]</span>
-              </div>
+              <a 
+                href={viewingEvidenceComplaint.photoUrl ? `http://localhost:5000/uploads/${viewingEvidenceComplaint.photoUrl}` : '#'} 
+                target={viewingEvidenceComplaint.photoUrl ? "_blank" : "_self"} 
+                rel="noopener noreferrer" 
+                download={!!viewingEvidenceComplaint.photoUrl}
+                className="button button-outline"
+                style={{ width: '100%', display: 'block', textAlign: 'center', marginBottom: '1.5rem' }}
+                onClick={(e) => {
+                  if (!viewingEvidenceComplaint.photoUrl) {
+                    e.preventDefault();
+                    showToast('No photo was provided by the contractor.', 'error');
+                  }
+                }}
+              >
+                Download Evidence Photo
+              </a>
+              
               <label className="form-field full-field">
                 <span>Contractor Remarks</span>
-                <textarea rows={3} disabled value="Pothole has been repaired and leveled correctly as per instructions." />
+                <textarea rows={3} disabled value={viewingEvidenceComplaint.remarks} />
               </label>
             </div>
             
-            <button 
-              className="button button-primary" 
-              style={{ width: '100%' }} 
-              onClick={() => setViewingEvidenceComplaint(null)}
-            >
-              Close
-            </button>
+            {viewingEvidenceComplaint.status === 'Under Review' || viewingEvidenceComplaint.status === 'Submitted' ? (
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button 
+                  className="button button-primary" 
+                  style={{ flex: 1 }} 
+                  onClick={() => {
+                    setStatus(viewingEvidenceComplaint, 'Resolved');
+                    setViewingEvidenceComplaint(null);
+                  }}
+                >
+                  Pass
+                </button>
+                <button 
+                  className="button button-secondary" 
+                  style={{ flex: 1 }} 
+                  onClick={() => {
+                    setStatus(viewingEvidenceComplaint, 'In Progress');
+                    setViewingEvidenceComplaint(null);
+                  }}
+                >
+                  Request Rework
+                </button>
+                <button 
+                  className="button button-outline" 
+                  style={{ flex: 1 }} 
+                  onClick={() => setViewingEvidenceComplaint(null)}
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <button 
+                className="button button-primary" 
+                style={{ width: '100%' }} 
+                onClick={() => setViewingEvidenceComplaint(null)}
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
       )}

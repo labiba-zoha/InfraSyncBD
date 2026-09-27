@@ -16,35 +16,36 @@ function ContractorsPage() {
   const isAdmin = currentUser?.role === 'super_admin';
   const isOfficer = currentUser?.role === 'department_officer';
 
+  const fetchContractors = async () => {
+    try {
+      const res = await api.get('/contractors/verified');
+      if (res.data.success) {
+        // Map database fields to frontend Contractor type
+        const mapped = res.data.data.map((row: any) => ({
+          id: row.contractor_id.toString(),
+          name: row.company_name || 'Unknown Company',
+          licenseStatus: 'Active', // Assuming they are active if verified
+          activeProjects: row.total_assigned_projects - row.completed_projects,
+          completedProjects: row.completed_projects,
+          delayedProjects: row.delayed_projects,
+          performance: Math.round((row.performance_rating / 5) * 100),
+          safety: Math.round((row.safety_rating / 5) * 100),
+          failedInspections: 0, // Not tracked directly in this table yet
+          complaints: 0, // Not tracked directly in this table yet
+          risk: row.risk_level === 'low_risk' ? 'Low'
+            : row.risk_level === 'medium_risk' ? 'Medium'
+            : row.risk_level === 'high_risk' ? 'High'
+            : 'Blacklisted',
+        }));
+        setContractorsList(mapped);
+      }
+    } catch (error) {
+      console.error('Error fetching contractors:', error);
+    }
+  };
+
   // Fetch verified contractors from real API
   useEffect(() => {
-    async function fetchContractors() {
-      try {
-        const res = await api.get('/contractors/verified');
-        if (res.data.success) {
-          // Map database fields to frontend Contractor type
-          const mapped = res.data.data.map((row: any) => ({
-            id: row.contractor_id.toString(),
-            name: row.company_name || 'Unknown Company',
-            licenseStatus: 'Active', // Assuming they are active if verified
-            activeProjects: row.total_assigned_projects - row.completed_projects,
-            completedProjects: row.completed_projects,
-            delayedProjects: row.delayed_projects,
-            performance: Math.round((row.performance_rating / 5) * 100),
-            safety: Math.round((row.safety_rating / 5) * 100),
-            failedInspections: 0, // Not tracked directly in this table yet
-            complaints: 0, // Not tracked directly in this table yet
-            risk: row.risk_level === 'low_risk' ? 'Low'
-              : row.risk_level === 'medium_risk' ? 'Medium'
-              : row.risk_level === 'high_risk' ? 'High'
-              : 'Blacklisted',
-          }));
-          setContractorsList(mapped);
-        }
-      } catch (error) {
-        console.error('Error fetching contractors:', error);
-      }
-    }
     fetchContractors();
   }, []);
 
@@ -73,6 +74,7 @@ function ContractorsPage() {
       
       showToast(`${contractorName} assigned to ${projectName}.`, 'success');
       await refreshProjects();
+      await fetchContractors(); // Re-fetch the contractor stats
       
       setSelectedContractorId('');
       setSelectedProjectId('');

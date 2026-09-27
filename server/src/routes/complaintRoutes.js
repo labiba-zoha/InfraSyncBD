@@ -20,6 +20,6 @@ const upload = multer({ storage: storage });
 router.post('/submit', authMiddleware, upload.single('photo'), submitComplaint);
 router.get('/', authMiddleware, getComplaints);
 router.post('/:id/resolve', authMiddleware, upload.single('photo'), resolveComplaint);
-router.put('/:id/status', authMiddleware, updateComplaintStatus);
+router.put('/:id/status', authMiddleware, upload.single('photo'), updateComplaintStatus);
 
 export default router;

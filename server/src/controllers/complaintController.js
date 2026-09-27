@@ -73,37 +73,49 @@ export const resolveComplaint = async (req, res) => {
 export const updateComplaintStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, assignedContractorName } = req.body;
+        const { status, assignedContractorName, resolutionSummary } = req.body;
         
         let dbStatus = 'submitted';
         if (status === 'Assigned') dbStatus = 'assigned';
         else if (status === 'In Progress') dbStatus = 'in_progress';
+        else if (status === 'Under Review') dbStatus = 'under_review';
         else if (status === 'Resolved') dbStatus = 'resolved';
         else if (status === 'Closed') dbStatus = 'closed';
+
+        let photoUrl = null;
+        if (req.file) {
+            photoUrl = req.file.filename;
+        }
+
+        let updateQuery = 'UPDATE complaints SET status = ?';
+        let queryParams = [dbStatus];
 
         if (assignedContractorName) {
             const [contractorRows] = await pool.query('SELECT contractor_id FROM contractor_profiles WHERE company_name = ?', [assignedContractorName]);
             if (contractorRows.length > 0) {
-                await pool.query(
-                    `UPDATE complaints SET status = ?, assigned_contractor_id = ? WHERE complaint_ticket_no = ?`,
-                    [dbStatus, contractorRows[0].contractor_id, id]
-                );
-            } else {
-                await pool.query(
-                    `UPDATE complaints SET status = ? WHERE complaint_ticket_no = ?`,
-                    [dbStatus, id]
-                );
+                updateQuery += ', assigned_contractor_id = ?';
+                queryParams.push(contractorRows[0].contractor_id);
             }
-        } else {
-            await pool.query(
-                `UPDATE complaints SET status = ? WHERE complaint_ticket_no = ?`,
-                [dbStatus, id]
-            );
         }
+        
+        if (resolutionSummary) {
+            updateQuery += ', resolution_summary = ?';
+            queryParams.push(resolutionSummary);
+        }
+
+        if (photoUrl) {
+            updateQuery += ', resolution_photo_url = ?';
+            queryParams.push(photoUrl);
+        }
+
+        updateQuery += ' WHERE complaint_ticket_no = ?';
+        queryParams.push(id);
+
+        await pool.query(updateQuery, queryParams);
 
         res.json({ success: true, message: 'Status updated' });
     } catch (error) {
         console.error('Error updating status:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
